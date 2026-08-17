@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>2048 · 星尘进化</title>
+<style>
+  :root {
+    --cell: 90px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body { height: 100%; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 12px;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    color: #fff;
+    overflow-x: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    background:
+      radial-gradient(1200px 800px at 15% -10%, rgba(120, 80, 220, 0.55), transparent 60%),
+      radial-gradient(1000px 700px at 110% 115%, rgba(40, 120, 200, 0.5), transparent 60%),
+      linear-gradient(160deg, #1a1038 0%, #2b2a6e 55%, #16275a 100%);
+  }
+
+  #stars { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+  #stars i {
+    position: absolute;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 6px #fff, 0 0 12px rgba(255,255,255,0.6);
+    animation: twinkle ease-in-out infinite;
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: .15; transform: scale(.7); }
+    50% { opacity: .9; transform: scale(1.35); }
+  }
+
+  .wrap { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; }
+
+  header { text-align: center; margin-bottom: 18px; }
+  h1 {
+    margin: 0;
+    font-size: clamp(34px, 8vw, 52px);
+    font-weight: 800;
+    letter-spacing: 2px;
+    background: linear-gradient(100deg, #ffe9a8, #ffb3e6 45%, #a8c6ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 4px 18px rgba(255, 180, 220, 0.35));
+  }
+  .subtitle { margin: 6px 0 0; font-size: 13px; color: rgba(255,255,255,0.65); letter-spacing: 1px; }
+
+  .hud { display: flex; gap: 12px; align-items: stretch; margin-bottom: 16px; width: 100%; max-width: 480px; }
+  .score-box {
+    flex: 1;
+    text-align: center;
+    padding: 10px 8px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 14px;
+    backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+  .score-box .label { font-size: 12px; color: rgba(255,255,255,0.6); letter-spacing: 1px; }
+  .score-box .value { font-size: 22px; font-weight: 800; margin-top: 2px; }
+  .score-box .value.animate { animation: scorePop .3s ease; }
+  @keyframes scorePop { 50% { transform: scale(1.25); color: #ffe9a8; } }
+
+  .btn {
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    border-radius: 14px;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .12s ease, background .2s ease;
+    letter-spacing: 1px;
+  }
+  .btn:hover { background: rgba(255,255,255,0.2); }
+  .btn:active { transform: scale(.94); }
+
+  #board {
+    position: relative;
+    background: rgba(20, 18, 46, 0.55);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.1);
+    backdrop-filter: blur(6px);
+    touch-action: none;
+  }
+  #cells, #tiles { position: absolute; inset: 0; }
+  #cells { pointer-events: none; }
+
+  .cell {
+    position: absolute;
+    background: rgba(255,255,255,0.05);
+    border-radius: 14px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+
+  .tile {
+    position: absolute;
+    top: 0; left: 0;
+    transition: transform 130ms cubic-bezier(.2,.7,.3,1);
+    will-change: transform;
+    pointer-events: none;
+  }
+  .tile-inner {
+    width: 100%; height: 100%;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+    position: relative;
+    overflow: hidden;
+  }
+  .tile-inner::after {
+    content: "";
+    position: absolute; inset: 0;
+    border-radius: 14px;
+    background: linear-gradient(160deg, rgba(255,255,255,0.35), rgba(255,255,255,0) 55%);
+    pointer-events: none;
+  }
+  .tile .emoji { font-size: calc(var(--cell) * 0.33); line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.15)); }
+  .tile .num { font-size: calc(var(--cell) * 0.26); font-weight: 800; line-height: 1; letter-spacing: -1px; text-shadow: 0 1px 2px rgba(255,255,255,0.35); }
+  .tile .name { font-size: calc(var(--cell) * 0.115); font-weight: 700; letter-spacing: 2px; opacity: .75; }
+
+  body.compact .tile .name { display: none; }
+  body.compact .tile .emoji { font-size: calc(var(--cell) * 0.36); }
+  body.compact .tile .num { font-size: calc(var(--cell) * 0.3); }
+
+  .appear { animation: appear .18s ease-out; }
+  @keyframes appear {
+    0% { transform: scale(0); opacity: 0; }
+    60% { transform: scale(1.12); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+  .pop { animation: pop .22s cubic-bezier(.2,.9,.3,1.4); }
+  @keyframes pop {
+    0% { transform: scale(0); }
+    60% { transform: scale(1.18); }
+    100% { transform: scale(1); }
+  }
+
+  .dpad { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); gap: 8px; margin-top: 22px; }
+  .dpad button {
+    border: 1px solid rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    border-radius: 14px;
+    font-size: 20px;
+    cursor: pointer;
+    transition: transform .1s ease, background .2s ease;
+  }
+  .dpad button:hover { background: rgba(255,255,255,0.2); }
+  .dpad button:active { transform: scale(.9); }
+  .dpad [data-dir="up"]    { grid-column: 2; grid-row: 1; }
+  .dpad [data-dir="left"]  { grid-column: 1; grid-row: 2; }
+  .dpad [data-dir="down"]  { grid-column: 2; grid-row: 2; }
+  .dpad [data-dir="right"] { grid-column: 3; grid-row: 2; }
+
+  .hint { margin-top: 18px; font-size: 12px; color: rgba(255,255,255,0.45); letter-spacing: 1px; text-align: center; }
+
+  #overlay {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(10, 8, 28, 0.66);
+    backdrop-filter: blur(6px);
+    transition: opacity .2s ease;
+  }
+  #overlay.hidden { display: none; }
+  .modal {
+    text-align: center;
+    background: rgba(40, 36, 80, 0.92);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 22px;
+    padding: 34px 30px;
+    max-width: 86vw;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+    animation: modalIn .3s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes modalIn { 0% { transform: scale(.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  .modal-emoji { font-size: 64px; line-height: 1; }
+  .modal-title { font-size: 26px; font-weight: 800; margin: 14px 0 6px; }
+  .modal-sub { font-size: 14px; color: rgba(255,255,255,0.7); margin-bottom: 22px; }
+  .modal-btns { display: flex; gap: 12px; justify-content: center; }
+  .modal-btns .primary { background: linear-gradient(100deg, #ffb054, #ff6e8f); border-color: transparent; }
+  .modal-btns .primary:hover { background: linear-gradient(100deg, #ffc06e, #ff8aa5); }
+
+  @media (max-width: 360px) {
+    .dpad { grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(2, 48px); }
+  }
+</style>
+</head>
+<body>
+  <div id="stars"></div>
+
+  <div class="wrap">
+    <header>
+      <h1>2048 · 星尘进化</h1>
+      <p class="subtitle">从一粒种子，合成到宇宙星辰 ✨</p>
+    </header>
+
+    <div class="hud">
+      <div class="score-box">
+        <div class="label">得分</div>
+        <div class="value" id="score">0</div>
+      </div>
+      <div class="score-box">
+        <div class="label">最高分</div>
+        <div class="value" id="best">0</div>
+      </div>
+      <button class="btn" id="btnNew">新游戏</button>
+      <button class="btn" id="btnUndo">↩ 撤销</button>
+    </div>
+
+    <div id="board">
+      <div id="cells"></div>
+      <div id="tiles"></div>
+    </div>
+
+    <div class="dpad">
+      <button data-dir="up">▲</button>
+      <button data-dir="left">◀</button>
+      <button data-dir="down">▼</button>
+      <button data-dir="right">▶</button>
+    </div>
+
+    <p class="hint">方向键 / WASD / 滑动屏幕 控制 · R 新游戏 · Z 撤销</p>
+  </div>
+
+  <div id="overlay" class="hidden">
+    <div class="modal">
+      <div class="modal-emoji" id="ovEmoji">🎉</div>
+      <div class="modal-title" id="ovTitle"></div>
+      <div class="modal-sub" id="ovSub"></div>
+      <div class="modal-btns">
+        <button class="btn" id="btnContinue">继续挑战</button>
+        <button class="btn primary" id="btnRestart">新游戏</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SIZE = 4;
+  var THEME = {
+    2:    { emoji: "🌱", name: "种子",  bg: "linear-gradient(145deg,#f3f8e8,#dff0c2)", text: "#5a6b3f" },
+    4:    { emoji: "🌿", name: "嫩芽",  bg: "linear-gradient(145deg,#e6f6d6,#c8e8a8)", text: "#4f6b3a" },
+    8:    { emoji: "🍀", name: "三叶草", bg: "linear-gradient(145deg,#d9f3cd,#a9dc9a)", text: "#3f6337" },
+    16:   { emoji: "🍄", name: "蘑菇",  bg: "linear-gradient(145deg,#d3efe0,#93d8bc)", text: "#2f6b55" },
+    32:   { emoji: "🌷", name: "花苞",  bg: "linear-gradient(145deg,#d7ecf6,#9fd0ea)", text: "#2f5a75" },
+    64:   { emoji: "🌸", name: "樱花",  bg: "linear-gradient(145deg,#fde0f0,#f5a8d8)", text: "#7d3060" },
+    128:  { emoji: "☀️", name: "骄阳",  bg: "linear-gradient(145deg,#fde5c8,#f8c06e)", text: "#6d4a10" },
+    256:  { emoji: "🌈", name: "彩虹",  bg: "linear-gradient(145deg,#fde5d6,#f8b0a0)", text: "#7d3520" },
+    512:  { emoji: "🌙", name: "明月",  bg: "linear-gradient(145deg,#e8ecff,#b8c4ff)", text: "#3a3a7d" },
+    1024: { emoji: "✨", name: "星辰",  bg: "linear-gradient(145deg,#f3e6ff,#d0b0ff)", text: "#54307d" },
+    2048: { emoji: "👑", name: "王冠",  bg: "linear-gradient(145deg,#fff1c9,#ffd166)", text: "#7a5c00" },
+    4096: { emoji: "🪐", name: "行星",  bg: "linear-gradient(145deg,#e8e4ff,#a89cff)", text: "#3a2f80" },
+    8192: { emoji: "🌌", name: "银河",  bg: "linear-gradient(145deg,#e0d6ff,#8f7bff)", text: "#fff" }
+  };
+  var GLOW = { 128: "rgba(248,192,110,.5)", 256: "rgba(248,176,160,.5)", 512: "rgba(184,196,255,.6)", 1024: "rgba(208,176,255,.6)", 2048: "rgba(255,209,102,.8)", 4096: "rgba(168,156,255,.7)", 8192: "rgba(143,123,255,.8)" };
+
+  var DIRS = {
+    left:  { dr: 0, dc: -1 },
+    right: { dr: 0, dc: 1 },
+    up:    { dr: -1, dc: 0 },
+    down:  { dr: 1, dc: 0 }
+  };
+
+  var tiles = [];
+  var score = 0;
+  var best = parseInt(localStorage.getItem("best2048") || "0", 10) || 0;
+  var won = false;
+  var over = false;
+  var animating = false;
+  var nextId = 1;
+  var history = [];
+
+  var gap = 10;
+  var cell = 90;
+
+  var board = document.getElementById("board");
+  var cellsLayer = document.getElementById("cells");
+  var tilesLayer = document.getElementById("tiles");
+  var scoreEl = document.getElementById("score");
+  var bestEl = document.getElementById("best");
+  var overlay = document.getElementById("overlay");
+
+  function posX(c) { return gap + c * (cell + gap); }
+  function posY(r) { return gap + r * (cell + gap); }
+
+  function layout() {
+    var maxW = Math.min(window.innerWidth - 24, 500);
+    gap = Math.max(6, Math.round(maxW * 0.03));
+    cell = Math.floor((maxW - gap * 5) / 4);
+    var size = cell * 4 + gap * 5;
+    board.style.width = size + "px";
+    board.style.height = size + "px";
+    document.documentElement.style.setProperty("--cell", cell + "px");
+    document.body.classList.toggle("compact", cell < 84);
+
+    cellsLayer.innerHTML = "";
+    for (var r = 0; r < SIZE; r++) {
+      for (var c = 0; c < SIZE; c++) {
+        var el = document.createElement("div");
+        el.className = "cell";
+        el.style.width = cell + "px";
+        el.style.height = cell + "px";
+        el.style.transform = "translate(" + posX(c) + "px," + posY(r) + "px)";
+        cellsLayer.appendChild(el);
+      }
+    }
+    render();
+  }
+
+  function themeOf(v) { return THEME[v] || THEME[8192]; }
+
+  function buildTileEl(t) {
+    var th = themeOf(t.value);
+    var el = document.createElement("div");
+    el.className = "tile";
+    el.dataset.id = t.id;
+    el.style.width = cell + "px";
+    el.style.height = cell + "px";
+    el.style.transform = "translate(" + posX(t.col) + "px," + posY(t.row) + "px)";
+
+    var inner = document.createElement("div");
+    inner.className = "tile-inner" + (t.isNew ? " appear" : "") + (t.isMerged ? " pop" : "");
+    inner.style.background = th.bg;
+    inner.style.color = th.text;
+    inner.style.boxShadow = GLOW[t.value]
+      ? "0 6px 22px " + GLOW[t.value] + ", 0 6px 16px rgba(0,0,0,0.16)"
+      : "0 6px 16px rgba(0,0,0,0.16)";
+    inner.innerHTML =
+      '<span class="emoji">' + th.emoji + "</span>" +
+      '<span class="num">' + t.value + "</span>" +
+      '<span class="name">' + th.name + "</span>";
+    el.appendChild(inner);
+    return el;
+  }
+
+  function render() {
+    tilesLayer.innerHTML = "";
+    for (var i = 0; i < tiles.length; i++) {
+      tilesLayer.appendChild(buildTileEl(tiles[i]));
+    }
+    for (var j = 0; j < tiles.length; j++) { tiles[j].isNew = false; tiles[j].isMerged = false; }
+  }
+
+  function emptyCells() {
+    var occ = {};
+    for (var i = 0; i < tiles.length; i++) occ[tiles[i].row * SIZE + tiles[i].col] = true;
+    var out = [];
+    for (var k = 0; k < SIZE * SIZE; k++) {
+      if (!occ[k]) out.push({ r: Math.floor(k / SIZE), c: k % SIZE });
+    }
+    return out;
+  }
+
+  function addRandomTile() {
+    var cells = emptyCells();
+    if (!cells.length) return false;
+    var p = cells[Math.floor(Math.random() * cells.length)];
+    var t = { id: nextId++, value: Math.random() < 0.9 ? 2 : 4, row: p.r, col: p.c, isNew: true };
+    tiles.push(t);
+    return t;
+  }
+
+  function updateHUD(animate) {
+    scoreEl.textContent = score;
+    bestEl.textContent = best;
+    if (animate) {
+      scoreEl.classList.remove("animate");
+      void scoreEl.offsetWidth;
+      scoreEl.classList.add("animate");
+    }
+  }
+
+  function pushHistory() {
+    history.push({ tiles: tiles.map(function (t) { return { id: t.id, value: t.value, row: t.row, col: t.col }; }), score: score });
+    if (history.length > 80) history.shift();
+  }
+
+  function buildOrder(dir) {
+    var order = [];
+    for (var r = 0; r < SIZE; r++) for (var c = 0; c < SIZE; c++) order.push({ r: r, c: c });
+    var d = DIRS[dir];
+    if (d.dc === 1) order.sort(function (a, b) { return b.c - a.c; });
+    else if (d.dc === -1) order.sort(function (a, b) { return a.c - b.c; });
+    else if (d.dr === 1) order.sort(function (a, b) { return b.r - a.r; });
+    else order.sort(function (a, b) { return a.r - b.r; });
+    return order;
+  }
+
+  function move(dir) {
+    if (animating || over) return;
+    pushHistory();
+
+    var d = DIRS[dir];
+    var order = buildOrder(dir);
+
+    var grid = [];
+    for (var r = 0; r < SIZE; r++) { grid[r] = []; for (var c = 0; c < SIZE; c++) grid[r][c] = null; }
+    for (var i = 0; i < tiles.length; i++) grid[tiles[i].row][tiles[i].col] = tiles[i];
+
+    var placement = [];
+    for (var rr = 0; rr < SIZE; rr++) { placement[rr] = []; for (var cc = 0; cc < SIZE; cc++) placement[rr][cc] = null; }
+
+    var slides = [];
+    var removeIds = {};
+    var mergedTiles = [];
+    var gained = 0;
+    var movedAny = false;
+
+    for (var oi = 0; oi < order.length; oi++) {
+      var pos = order[oi];
+      var tile = grid[pos.r][pos.c];
+      if (!tile) continue;
+      grid[pos.r][pos.c] = null;
+
+      var r2 = pos.r, c2 = pos.c, destR = pos.r, destC = pos.c, target = null;
+      while (true) {
+        var nr = r2 + d.dr, nc = c2 + d.dc;
+        if (nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE) break;
+        var occ = placement[nr][nc];
+        if (!occ) { destR = nr; destC = nc; r2 = nr; c2 = nc; }
+        else if (occ.value === tile.value && !occ.merged) { destR = nr; destC = nc; target = occ; break; }
+        else break;
+      }
+
+      if (target) {
+        slides.push({ id: tile.id, r: destR, c: destC });
+        removeIds[tile.id] = true;
+        removeIds[target.id] = true;
+        var mv = tile.value * 2;
+        var mt = { id: nextId++, value: mv, row: destR, col: destC, isMerged: true };
+        mergedTiles.push(mt);
+        placement[destR][destC] = mt;
+        gained += mv;
+        movedAny = true;
+      } else {
+        if (destR !== pos.r || destC !== pos.c) {
+          slides.push({ id: tile.id, r: destR, c: destC });
+          tile.row = destR; tile.col = destC;
+          movedAny = true;
+        }
+        placement[destR][destC] = tile;
+      }
+    }
+
+    if (!movedAny) { history.pop(); return; }
+
+    tiles = tiles.filter(function (t) { return !removeIds[t.id]; }).concat(mergedTiles);
+    score += gained;
+    if (score > best) { best = score; localStorage.setItem("best2048", String(best)); }
+
+    for (var si = 0; si < slides.length; si++) {
+      var s = slides[si];
+      var el = tilesLayer.querySelector('.tile[data-id="' + s.id + '"]');
+      if (el) el.style.transform = "translate(" + posX(s.c) + "px," + posY(s.r) + "px)";
+    }
+
+    animating = true;
+    updateHUD(true);
+
+    setTimeout(function () {
+      for (var id in removeIds) {
+        var rm = tilesLayer.querySelector('.tile[data-id="' + id + '"]');
+        if (rm) rm.remove();
+      }
+      for (var mi = 0; mi < mergedTiles.length; mi++) {
+        tilesLayer.appendChild(buildTileEl(mergedTiles[mi]));
+      }
+      var spawned = addRandomTile();
+      if (spawned) tilesLayer.appendChild(buildTileEl(spawned));
+
+      for (var fi = 0; fi < tiles.length; fi++) { tiles[fi].isNew = false; tiles[fi].isMerged = false; }
+      animating = false;
+      updateHUD();
+      checkEnd();
+    }, 140);
+  }
+
+  function hasMove() {
+    var g = [];
+    for (var r = 0; r < SIZE; r++) { g[r] = []; for (var c = 0; c < SIZE; c++) g[r][c] = 0; }
+    for (var i = 0; i < tiles.length; i++) g[tiles[i].row][tiles[i].col] = tiles[i].value;
+    for (var r = 0; r < SIZE; r++) {
+      for (var c = 0; c < SIZE; c++) {
+        var v = g[r][c];
+        if (c + 1 < SIZE && g[r][c + 1] === v) return true;
+        if (r + 1 < SIZE && g[r + 1][c] === v) return true;
+      }
+    }
+    return false;
+  }
+
+  function checkEnd() {
+    if (over) return;
+    if (!won) {
+      for (var i = 0; i < tiles.length; i++) {
+        if (tiles[i].value >= 2048) { won = true; showOverlay("win"); return; }
+      }
+    }
+    if (emptyCells().length === 0 && !hasMove()) {
+      over = true;
+      showOverlay("lose");
+    }
+  }
+
+  function showOverlay(type) {
+    var emoji = document.getElementById("ovEmoji");
+    var title = document.getElementById("ovTitle");
+    var sub = document.getElementById("ovSub");
+    var cont = document.getElementById("btnContinue");
+    if (type === "win") {
+      emoji.textContent = "👑";
+      title.textContent = "你合成了 2048！";
+      sub.textContent = "恭喜通关！你可以继续冲击更高分 ✨";
+      cont.style.display = "";
+    } else {
+      emoji.textContent = "🌠";
+      title.textContent = "游戏结束";
+      sub.textContent = "本局得分 " + score + " · 最高分 " + best;
+      cont.style.display = "none";
+    }
+    overlay.classList.remove("hidden");
+  }
+
+  function hideOverlay() { overlay.classList.add("hidden"); }
+
+  function newGame() {
+    tiles = [];
+    score = 0;
+    won = false;
+    over = false;
+    animating = false;
+    history = [];
+    addRandomTile();
+    addRandomTile();
+    render();
+    updateHUD();
+    hideOverlay();
+  }
+
+  function undo() {
+    if (animating || !history.length) return;
+    var h = history.pop();
+    tiles = h.tiles.map(function (t) { return { id: t.id, value: t.value, row: t.row, col: t.col }; });
+    score = h.score;
+    over = false;
+    render();
+    updateHUD();
+    hideOverlay();
+  }
+
+  // ---- 事件 ----
+  document.addEventListener("keydown", function (e) {
+    var map = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", a: "left", d: "right", w: "up", s: "down" };
+    if (e.key === "r" || e.key === "R") { newGame(); return; }
+    if (e.key === "z" || e.key === "Z") { e.preventDefault(); undo(); return; }
+    var dir = map[e.key];
+    if (dir) { e.preventDefault(); move(dir); }
+  });
+
+  var touchStart = null;
+  board.addEventListener("touchstart", function (e) {
+    touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, { passive: true });
+  board.addEventListener("touchend", function (e) {
+    if (!touchStart) return;
+    var dx = e.changedTouches[0].clientX - touchStart.x;
+    var dy = e.changedTouches[0].clientY - touchStart.y;
+    touchStart = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 30) return;
+    if (Math.abs(dx) > Math.abs(dy)) move(dx > 0 ? "right" : "left");
+    else move(dy > 0 ? "down" : "up");
+  }, { passive: true });
+
+  document.getElementById("btnNew").addEventListener("click", newGame);
+  document.getElementById("btnUndo").addEventListener("click", undo);
+  document.getElementById("btnRestart").addEventListener("click", newGame);
+  document.getElementById("btnContinue").addEventListener("click", hideOverlay);
+
+  var dpadBtns = document.querySelectorAll(".dpad button");
+  for (var b = 0; b < dpadBtns.length; b++) {
+    (function (btn) {
+      btn.addEventListener("click", function () { move(btn.getAttribute("data-dir")); });
+    })(dpadBtns[b]);
+  }
+
+  window.addEventListener("resize", layout);
+
+  // ---- 星空背景 ----
+  (function makeStars() {
+    var layer = document.getElementById("stars");
+    for (var i = 0; i < 46; i++) {
+      var s = document.createElement("i");
+      var sz = Math.random() * 3 + 1;
+      s.style.width = sz + "px";
+      s.style.height = sz + "px";
+      s.style.left = Math.random() * 100 + "%";
+      s.style.top = Math.random() * 100 + "%";
+      s.style.animationDelay = (Math.random() * 6) + "s";
+      s.style.animationDuration = (3 + Math.random() * 5) + "s";
+      layer.appendChild(s);
+    }
+  })();
+
+  // ---- 启动 ----
+  bestEl.textContent = best;
+  newGame();
+  layout();
+})();
+</script>
+</body>
+</html>
